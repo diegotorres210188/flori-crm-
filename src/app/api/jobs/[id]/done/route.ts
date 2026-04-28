@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { jobs, prospects } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 interface IncomingProspect {
   name: string;
@@ -15,6 +15,8 @@ interface IncomingProspect {
   opportunitySignals?: string;
   source?: string;
   status?: string;
+  email?: string;
+  linkedinUrl?: string;
 }
 
 export async function POST(
@@ -36,11 +38,21 @@ export async function POST(
   let body: {
     prospects?: IncomingProspect[];
     source_statuses?: Record<string, string>;
+    status?: string; // "failed" from Error Trigger workflow
   };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "JSON invalido" }, { status: 400 });
+  }
+
+  // Handle explicit failure status from Error Trigger workflow
+  if (body.status === "failed") {
+    db.update(jobs)
+      .set({ status: "failed", finishedAt: new Date() })
+      .where(eq(jobs.id, id))
+      .run();
+    return NextResponse.json({ success: true, status: "failed" });
   }
 
   if (!Array.isArray(body.prospects)) {
@@ -53,7 +65,8 @@ export async function POST(
   try {
     const now = new Date();
 
-    // Insert all prospects
+    // Upsert all prospects — conflict on email+linkedin_url
+    // status (crmStatus) and notes are intentionally excluded from SET — never overwrite user edits
     for (const p of body.prospects) {
       db.insert(prospects)
         .values({
@@ -69,8 +82,29 @@ export async function POST(
           opportunitySignals: p.opportunitySignals || null,
           source: p.source || null,
           status: p.status || "new",
+          email: p.email || null,
+          linkedinUrl: p.linkedinUrl || null,
           createdAt: now,
           updatedAt: now,
+        })
+        .onConflictDoUpdate({
+          target: [prospects.email, prospects.linkedinUrl],
+          set: {
+            name: sql`excluded.name`,
+            type: sql`excluded.type`,
+            industry: sql`excluded.industry`,
+            region: sql`excluded.region`,
+            contactsJson: sql`excluded.contacts_json`,
+            leadershipJson: sql`excluded.leadership_json`,
+            fitScore: sql`excluded.fit_score`,
+            fitBreakdown: sql`excluded.fit_breakdown`,
+            opportunitySignals: sql`excluded.opportunity_signals`,
+            source: sql`excluded.source`,
+            email: sql`excluded.email`,
+            linkedinUrl: sql`excluded.linkedin_url`,
+            updatedAt: sql`excluded.updated_at`,
+            // status (crmStatus) and notes intentionally excluded — never overwrite user edits
+          },
         })
         .run();
     }
