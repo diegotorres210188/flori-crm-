@@ -113,6 +113,8 @@ export const prospects = sqliteTable("prospects", {
   tags: text("tags"),
   notes: text("notes"),
   rawData: text("raw_data"),
+  email: text("email"),
+  linkedinUrl: text("linkedin_url"),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

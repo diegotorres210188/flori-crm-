@@ -113,6 +113,8 @@ function initTables(db: Database.Database): void {
       tags TEXT,
       notes TEXT,
       raw_data TEXT,
+      email TEXT,
+      linkedin_url TEXT,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
     )`,
