@@ -9,6 +9,7 @@ import {
   Activity,
   Settings,
   Briefcase,
+  Search,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +19,7 @@ const navItems = [
   { href: "/contacts", label: "Contactos", icon: Users },
   { href: "/deals", label: "Deals", icon: Briefcase },
   { href: "/activities", label: "Actividades", icon: Activity },
+  { href: "/prospecting", label: "Prospectos", icon: Search },
   { href: "/settings", label: "Configuracion", icon: Settings },
 ];
 
