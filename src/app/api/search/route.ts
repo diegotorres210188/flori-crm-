@@ -33,7 +33,12 @@ export async function POST(request: NextRequest) {
     fetch(process.env.N8N_WEBHOOK_URL!, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ job_id: job.id, criteria: body.criteria.trim() }),
+      body: JSON.stringify({
+        job_id: job.id,
+        criteria: body.criteria.trim(),
+        callback_url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+        secret: process.env.N8N_CALLBACK_SECRET || "",
+      }),
     }).catch((err) => console.error("Webhook fire failed:", err));
 
     return NextResponse.json({ job_id: job.id }, { status: 202 });
