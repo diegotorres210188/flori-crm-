@@ -75,3 +75,48 @@ export const crmSettings = sqliteTable("crm_settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),
 });
+
+export const jobs = sqliteTable("jobs", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  criteria: text("criteria").notNull(),
+  status: text("status").notNull().default("pending"),
+  sourceStatuses: text("source_statuses").default(
+    '{"apollo":"pending","instagram":"pending","behance":"pending","google":"pending","news":"pending"}'
+  ),
+  prospectCount: integer("prospect_count").default(0),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  finishedAt: integer("finished_at", { mode: "timestamp" }),
+});
+
+export const prospects = sqliteTable("prospects", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  jobId: text("job_id")
+    .notNull()
+    .references(() => jobs.id),
+  name: text("name").notNull(),
+  type: text("type"),
+  industry: text("industry"),
+  region: text("region"),
+  contactsJson: text("contacts_json"),
+  leadershipJson: text("leadership_json"),
+  fitScore: integer("fit_score").default(0),
+  fitBreakdown: text("fit_breakdown"),
+  opportunitySignals: text("opportunity_signals"),
+  source: text("source"),
+  status: text("status").default("new"),
+  tags: text("tags"),
+  notes: text("notes"),
+  rawData: text("raw_data"),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});

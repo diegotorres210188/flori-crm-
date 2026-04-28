@@ -87,6 +87,35 @@ function initTables(db: Database.Database): void {
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY,
+      criteria TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      source_statuses TEXT DEFAULT '{"apollo":"pending","instagram":"pending","behance":"pending","google":"pending","news":"pending"}',
+      prospect_count INTEGER DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      finished_at INTEGER
+    )`,
+    `CREATE TABLE IF NOT EXISTS prospects (
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL REFERENCES jobs(id),
+      name TEXT NOT NULL,
+      type TEXT,
+      industry TEXT,
+      region TEXT,
+      contacts_json TEXT,
+      leadership_json TEXT,
+      fit_score INTEGER DEFAULT 0,
+      fit_breakdown TEXT,
+      opportunity_signals TEXT,
+      source TEXT,
+      status TEXT DEFAULT 'new',
+      tags TEXT,
+      notes TEXT,
+      raw_data TEXT,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    )`,
   ];
 
   for (const sql of tables) {
