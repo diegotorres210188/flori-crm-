@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { jobs, prospects } from "@/db/schema";
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 interface IncomingProspect {
   name: string;
@@ -24,7 +24,12 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.N8N_CALLBACK_SECRET}`) {
+  const validSecrets = [
+    process.env.N8N_CALLBACK_SECRET,
+    process.env.SCRAPER_SECRET,
+  ].filter(Boolean);
+  const authorized = validSecrets.some((s) => authHeader === `Bearer ${s}`);
+  if (!authorized) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -65,8 +70,6 @@ export async function POST(
   try {
     const now = new Date();
 
-    // Upsert all prospects — conflict on email+linkedin_url
-    // status (crmStatus) and notes are intentionally excluded from SET — never overwrite user edits
     for (const p of body.prospects) {
       db.insert(prospects)
         .values({
@@ -86,25 +89,6 @@ export async function POST(
           linkedinUrl: p.linkedinUrl || null,
           createdAt: now,
           updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [prospects.email, prospects.linkedinUrl],
-          set: {
-            name: sql`excluded.name`,
-            type: sql`excluded.type`,
-            industry: sql`excluded.industry`,
-            region: sql`excluded.region`,
-            contactsJson: sql`excluded.contacts_json`,
-            leadershipJson: sql`excluded.leadership_json`,
-            fitScore: sql`excluded.fit_score`,
-            fitBreakdown: sql`excluded.fit_breakdown`,
-            opportunitySignals: sql`excluded.opportunity_signals`,
-            source: sql`excluded.source`,
-            email: sql`excluded.email`,
-            linkedinUrl: sql`excluded.linkedin_url`,
-            updatedAt: sql`excluded.updated_at`,
-            // status (crmStatus) and notes intentionally excluded — never overwrite user edits
-          },
         })
         .run();
     }

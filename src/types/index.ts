@@ -1,4 +1,4 @@
-export type Temperature = "cold" | "warm" | "hot";
+export type Temperature = "cold" | "warm" | "hot" | "contactado";
 
 export type ActivityType = "call" | "email" | "meeting" | "note" | "follow_up";
 

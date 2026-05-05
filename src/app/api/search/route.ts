@@ -3,43 +3,54 @@ import { db } from "@/db";
 import { jobs } from "@/db/schema";
 
 export async function POST(request: NextRequest) {
-  let body: { criteria?: string };
+  let body: { criteria?: string; mode?: string; industry?: string; style?: string; location?: string; strict_geo?: boolean };
   try {
     body = await request.json();
   } catch {
     return NextResponse.json({ error: "JSON invalido" }, { status: 400 });
   }
 
-  if (!body.criteria || body.criteria.trim().length === 0) {
+  const mode = body.mode === "people" ? "people" : "companies";
+  const industry = body.industry?.trim() || "";
+  const style = body.style?.trim() || "";
+  const location = body.location?.trim() || "";
+  const extra = body.criteria?.trim() || "";
+  const strictGeo = !!body.strict_geo;
+
+  if (!industry && !style) {
     return NextResponse.json(
-      { error: "El campo 'criteria' es requerido" },
+      { error: "Selecciona al menos un filtro de búsqueda" },
       { status: 400 }
     );
   }
+
+  const criteriaJson = JSON.stringify({ mode, query: extra, industry, style, location, strict_geo: strictGeo });
 
   try {
     const now = new Date();
     const job = db
       .insert(jobs)
       .values({
-        criteria: body.criteria.trim(),
+        criteria: criteriaJson,
         status: "pending",
         createdAt: now,
       })
       .returning()
       .get();
 
-    // Fire and forget — don't await
-    fetch(process.env.N8N_WEBHOOK_URL!, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        job_id: job.id,
-        criteria: body.criteria.trim(),
-        callback_url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
-        secret: process.env.N8N_CALLBACK_SECRET || "",
-      }),
-    }).catch((err) => console.error("Webhook fire failed:", err));
+    // Fire n8n webhook if configured (optional — local scraper worker.py handles jobs otherwise)
+    if (process.env.N8N_WEBHOOK_URL) {
+      fetch(process.env.N8N_WEBHOOK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          job_id: job.id,
+          criteria: criteriaJson,
+          callback_url: process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000",
+          secret: process.env.N8N_CALLBACK_SECRET || "",
+        }),
+      }).catch((err) => console.error("Webhook fire failed:", err));
+    }
 
     return NextResponse.json({ job_id: job.id }, { status: 202 });
   } catch (error) {

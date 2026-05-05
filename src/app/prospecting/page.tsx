@@ -1,13 +1,10 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -17,39 +14,41 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  Search,
-  Loader2,
-  CheckCircle2,
-  XCircle,
-  Globe,
-  Camera,
-  Palette,
-  Newspaper,
-  Users,
-} from "lucide-react";
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Search, Loader2, CheckCircle2, Sparkles } from "lucide-react";
 
-const searchSchema = z.object({
-  criteria: z
-    .string()
-    .min(3, "Ingresa al menos 3 caracteres")
-    .max(1000, "Maximo 1000 caracteres"),
-});
+// ── Filter options ───────────────────────────────────────────────
 
-type SearchFormData = z.infer<typeof searchSchema>;
+const STYLE_OPTIONS = [
+  { value: "botanica", label: "Botánica / Naturaleza" },
+  { value: "whimsical", label: "Whimsical / Mágica" },
+  { value: "editorial", label: "Editorial / Prensa" },
+  { value: "infantil", label: "Ilustración infantil / Cuento" },
+  { value: "pattern", label: "Pattern design / Surface design" },
+  { value: "acuarela", label: "Acuarela / Handmade" },
+];
 
-interface SourceStatuses {
-  apollo: string;
-  instagram: string;
-  behance: string;
-  google: string;
-  news: string;
-}
+const LOCATION_OPTIONS = [
+  { value: "argentina", label: "Argentina" },
+  { value: "buenos_aires", label: "Buenos Aires" },
+  { value: "latam", label: "Latinoamérica" },
+  { value: "espana", label: "España" },
+  { value: "global", label: "Global (sin filtro geo)" },
+];
+
+// ── Types ────────────────────────────────────────────────────────
 
 interface JobData {
   id: string;
   criteria: string;
   status: string;
-  source_statuses: SourceStatuses | null;
   prospect_count: number;
   created_at: string;
   finished_at: string | null;
@@ -61,40 +60,41 @@ interface Prospect {
   type: string | null;
   industry: string | null;
   region: string | null;
-  contactsJson: string | null;
-  leadershipJson: string | null;
   fitScore: number;
   fitBreakdown: string | null;
   opportunitySignals: string | null;
+  email: string | null;
+  notes: string | null;
   source: string | null;
   status: string;
 }
 
-const SOURCE_CONFIG = [
-  { key: "apollo" as const, label: "Apollo", icon: Users },
-  { key: "instagram" as const, label: "Instagram", icon: Camera },
-  { key: "behance" as const, label: "Behance", icon: Palette },
-  { key: "google" as const, label: "Google", icon: Globe },
-  { key: "news" as const, label: "Noticias", icon: Newspaper },
-];
+// ── Helpers ──────────────────────────────────────────────────────
 
 function fitScoreColor(score: number): string {
-  if (score >= 80) return "bg-green-100 text-green-800";
-  if (score >= 60) return "bg-yellow-100 text-yellow-800";
-  if (score >= 40) return "bg-orange-100 text-orange-800";
+  if (score >= 70) return "bg-green-100 text-green-800";
+  if (score >= 45) return "bg-yellow-100 text-yellow-800";
+  if (score >= 25) return "bg-orange-100 text-orange-800";
   return "bg-red-100 text-red-800";
 }
 
-function SourceStatusIcon({ status }: { status: string }) {
-  if (status === "done") {
-    return <CheckCircle2 className="h-4 w-4 text-green-600" />;
-  }
-  if (status === "failed") {
-    return <XCircle className="h-4 w-4 text-red-600" />;
-  }
-  // pending or running
-  return <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />;
+function extractUrl(notes: string | null): string | null {
+  if (!notes) return null;
+  const m = notes.match(/🌐\s*(https?:\/\/[^\s\n]+)/);
+  return m ? m[1] : null;
 }
+
+function extractContactLines(notes: string | null): string[] {
+  if (!notes) return [];
+  return notes
+    .split("\n")
+    .slice(1)
+    .filter((l) => l.trim().length > 0);
+}
+
+const SESSION_KEY = "prospecting_job_id";
+
+// ── Component ────────────────────────────────────────────────────
 
 export default function ProspectingPage() {
   const [jobId, setJobId] = useState<string | null>(null);
@@ -103,64 +103,133 @@ export default function ProspectingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-  } = useForm<SearchFormData>({
-    resolver: zodResolver(searchSchema),
-  });
+  const [style, setStyle] = useState("");
+  const [location, setLocation] = useState("argentina");
+  const [strictGeo, setStrictGeo] = useState(false);
+  const [keywords, setKeywords] = useState("");
+
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [enrichJobId, setEnrichJobId] = useState<string | null>(null);
+  const [enrichStatus, setEnrichStatus] = useState<string>("idle");
+
+  // Restore active job from session on mount
+  useEffect(() => {
+    const saved = sessionStorage.getItem(SESSION_KEY);
+    if (!saved) return;
+    (async () => {
+      try {
+        const [jobRes, prospectsRes] = await Promise.all([
+          fetch(`/api/jobs/${saved}`),
+          fetch(`/api/jobs/${saved}/prospects`),
+        ]);
+        if (!jobRes.ok) { sessionStorage.removeItem(SESSION_KEY); return; }
+        const jobData: JobData = await jobRes.json();
+        setJobId(saved);
+        setJob(jobData);
+        if (prospectsRes.ok) {
+          const data: Prospect[] = await prospectsRes.json();
+          data.sort((a, b) => b.fitScore - a.fitScore);
+          setProspects(data);
+        }
+      } catch { sessionStorage.removeItem(SESSION_KEY); }
+    })();
+  }, []);
 
   const jobDone = job?.status === "done" || job?.status === "failed";
+  const isSearchRunning = job && !jobDone;
 
-  // Poll job status
-  useEffect(() => {
-    if (!jobId || jobDone) return;
-
-    const interval = setInterval(async () => {
-      try {
-        const res = await fetch(`/api/jobs/${jobId}`);
-        if (!res.ok) return;
-        const data: JobData = await res.json();
-        setJob(data);
-      } catch {
-        // Silently retry on next interval
-      }
-    }, 3000);
-
-    return () => clearInterval(interval);
-  }, [jobId, jobDone]);
-
-  // Fetch prospects when job is done
   const fetchProspects = useCallback(async (id: string) => {
     try {
       const res = await fetch(`/api/jobs/${id}/prospects`);
       if (res.ok) {
-        const data = await res.json();
+        const data: Prospect[] = await res.json();
+        data.sort((a, b) => b.fitScore - a.fitScore);
         setProspects(data);
       }
-    } catch {
-      // Will show empty results
-    }
+    } catch { /* retry */ }
   }, []);
+
+  useEffect(() => {
+    if (!jobId || jobDone) return;
+    const poll = async () => {
+      try {
+        const [jobRes, prospectsRes] = await Promise.all([
+          fetch(`/api/jobs/${jobId}`),
+          fetch(`/api/jobs/${jobId}/prospects`),
+        ]);
+        if (jobRes.ok) setJob(await jobRes.json());
+        if (prospectsRes.ok) {
+          const data: Prospect[] = await prospectsRes.json();
+          data.sort((a, b) => b.fitScore - a.fitScore);
+          setProspects(data);
+        }
+      } catch { /* retry */ }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, [jobId, jobDone]);
 
   useEffect(() => {
     if (job?.status === "done" && jobId) {
       fetchProspects(jobId);
+      sessionStorage.removeItem(SESSION_KEY);
     }
+    if (job?.status === "failed") sessionStorage.removeItem(SESSION_KEY);
   }, [job?.status, jobId, fetchProspects]);
 
-  const onSubmit = async (data: SearchFormData) => {
+  useEffect(() => {
+    if (!enrichJobId || enrichStatus !== "running") return;
+    const poll = async () => {
+      try {
+        const [enrichRes, prospectsRes] = await Promise.all([
+          fetch(`/api/jobs/${enrichJobId}`),
+          jobId ? fetch(`/api/jobs/${jobId}/prospects`) : Promise.resolve(null),
+        ]);
+        if (enrichRes.ok) {
+          const data: JobData = await enrichRes.json();
+          if (data.status === "done" || data.status === "failed") {
+            setEnrichStatus(data.status === "done" ? "done" : "failed");
+          }
+        }
+        if (prospectsRes && prospectsRes.ok) {
+          const data: Prospect[] = await prospectsRes.json();
+          data.sort((a, b) => b.fitScore - a.fitScore);
+          setProspects(data);
+        }
+      } catch { /* retry */ }
+    };
+    poll();
+    const interval = setInterval(poll, 3000);
+    return () => clearInterval(interval);
+  }, [enrichJobId, enrichStatus, jobId]);
+
+  const handleSearch = async () => {
+    if (!style) {
+      setError("Seleccioná un estilo de ilustración.");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
     setJob(null);
     setProspects([]);
+    setSelectedIds(new Set());
+    setEnrichJobId(null);
+    setEnrichStatus("idle");
+    sessionStorage.removeItem(SESSION_KEY);
 
     try {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ criteria: data.criteria }),
+        body: JSON.stringify({
+          mode: "people",
+          style,
+          location,
+          strict_geo: strictGeo,
+          criteria: keywords.trim(),
+        }),
       });
 
       if (!res.ok) {
@@ -171,18 +240,12 @@ export default function ProspectingPage() {
       }
 
       const result = await res.json();
+      sessionStorage.setItem(SESSION_KEY, result.job_id);
       setJobId(result.job_id);
       setJob({
         id: result.job_id,
-        criteria: data.criteria,
+        criteria: "",
         status: "pending",
-        source_statuses: {
-          apollo: "pending",
-          instagram: "pending",
-          behance: "pending",
-          google: "pending",
-          news: "pending",
-        },
         prospect_count: 0,
         created_at: new Date().toISOString(),
         finished_at: null,
@@ -194,14 +257,65 @@ export default function ProspectingPage() {
     }
   };
 
+  const handleEnrich = async () => {
+    if (!jobId || selectedIds.size === 0) return;
+    const toEnrich = prospects
+      .filter((p) => selectedIds.has(p.id))
+      .map((p) => ({ name: p.name, url: extractUrl(p.notes) ?? "" }))
+      .filter((p) => p.url.length > 0);
+
+    if (toEnrich.length === 0) {
+      setError("Los prospectos seleccionados no tienen URL para enriquecer.");
+      return;
+    }
+
+    setEnrichStatus("running");
+    setEnrichJobId(null);
+    setSelectedIds(new Set());
+
+    try {
+      const res = await fetch("/api/enrich", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ job_id: jobId, prospects: toEnrich }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setEnrichJobId(data.job_id);
+      } else {
+        setEnrichStatus("idle");
+        setError("Error al iniciar enriquecimiento.");
+      }
+    } catch {
+      setEnrichStatus("idle");
+      setError("Error de conexion.");
+    }
+  };
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAll = () => {
+    setSelectedIds(
+      selectedIds.size === prospects.length
+        ? new Set()
+        : new Set(prospects.map((p) => p.id))
+    );
+  };
+
+  // ── Render ──────────────────────────────────────────────────────
+
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">
-          Buscador de Prospectos
-        </h1>
+        <h1 className="text-2xl font-bold tracking-tight">Buscador de Ilustradoras</h1>
         <p className="text-muted-foreground">
-          Encuentra nuevos prospectos usando inteligencia artificial
+          Busca ilustradoras y artistas en Behance por estilo y ubicación
         </p>
       </div>
 
@@ -210,131 +324,251 @@ export default function ProspectingPage() {
         <CardHeader>
           <CardTitle className="text-lg">Nueva busqueda</CardTitle>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-            <div>
-              <Textarea
-                placeholder="Describe los prospectos que buscas. Ejemplo: Editoriales infantiles en Buenos Aires que publiquen libros ilustrados..."
-                rows={3}
-                {...register("criteria")}
-              />
-              {errors.criteria && (
-                <p className="mt-1 text-sm text-red-600">
-                  {errors.criteria.message}
-                </p>
-              )}
+        <CardContent className="space-y-5">
+
+          {/* Filters grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Estilo de ilustración</Label>
+              <Select value={style} onValueChange={(v) => setStyle(v ?? "")} disabled={!!isSearchRunning}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Seleccioná un estilo…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {STYLE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              ) : (
-                <Search className="mr-2 h-4 w-4" />
-              )}
-              Buscar prospectos
-            </Button>
-          </form>
+
+            <div className="space-y-1.5">
+              <Label>Ubicación</Label>
+              <Select value={location} onValueChange={(v) => setLocation(v ?? "argentina")} disabled={!!isSearchRunning}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Ubicación…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {LOCATION_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Keywords + strict geo */}
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label className="text-sm">
+                Palabras clave <span className="text-muted-foreground font-normal">(opcional)</span>
+              </Label>
+              <Input
+                placeholder="Ej: comisiones abiertas, acuarela, surface design…"
+                value={keywords}
+                onChange={(e) => setKeywords(e.target.value)}
+                disabled={!!isSearchRunning}
+              />
+              <p className="text-xs text-muted-foreground">Refinan la búsqueda en Behance y priorizan perfiles que las mencionen</p>
+            </div>
+
+            {location !== "global" && (
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <Checkbox
+                  checked={strictGeo}
+                  onCheckedChange={(v) => setStrictGeo(!!v)}
+                  disabled={!!isSearchRunning}
+                />
+                <span className="text-sm text-muted-foreground">
+                  Filtrar estrictamente por ubicación
+                  <span className="ml-1 text-xs">(excluye perfiles sin ubicación declarada)</span>
+                </span>
+              </label>
+            )}
+          </div>
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <Button onClick={handleSearch} disabled={isSubmitting || !!isSearchRunning}>
+            {isSubmitting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Search className="mr-2 h-4 w-4" />
+            )}
+            Buscar en Behance
+          </Button>
         </CardContent>
       </Card>
 
-      {/* Error */}
-      {error && (
-        <Card className="border-red-200 bg-red-50">
-          <CardContent className="pt-6">
-            <p className="text-sm text-red-800">{error}</p>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Source Status */}
-      {job && !jobDone && (
+      {/* Status cards */}
+      {isSearchRunning && (
         <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Buscando prospectos...</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {SOURCE_CONFIG.map(({ key, label, icon: Icon }) => {
-                const status = job.source_statuses?.[key] ?? "pending";
-                return (
-                  <div
-                    key={key}
-                    className="flex items-center gap-3 text-sm"
-                  >
-                    <Icon className="h-4 w-4 text-muted-foreground" />
-                    <span className="w-24 font-medium">{label}</span>
-                    <SourceStatusIcon status={status} />
-                    <span className="text-muted-foreground capitalize">
-                      {status}
-                    </span>
-                  </div>
-                );
-              })}
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground shrink-0" />
+              <div>
+                <p className="font-medium">
+                  {prospects.length === 0 ? "Buscando en Behance..." : "Visitando perfiles..."}
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {prospects.length > 0
+                    ? `${prospects.length} ilustradoras encontradas hasta ahora`
+                    : "Tarda 1-3 minutos. Los resultados aparecen a medida que se encuentran."}
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Job Failed */}
+      {enrichStatus === "running" && (
+        <Card className="border-blue-200 bg-blue-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-blue-600 shrink-0" />
+              <div>
+                <p className="font-medium text-blue-900">Buscando datos de contacto...</p>
+                <p className="text-sm text-blue-700">Visitando perfiles en profundidad.</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {enrichStatus === "done" && (
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <p className="text-sm font-medium text-green-800">Enriquecimiento completado</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {job?.status === "done" && enrichStatus === "idle" && (
+        <Card className="border-green-200 bg-green-50">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              <p className="text-sm font-medium text-green-800">
+                Busqueda completada — {prospects.length} ilustradoras encontradas
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {job?.status === "failed" && (
         <Card className="border-red-200 bg-red-50">
           <CardContent className="pt-6">
-            <p className="text-sm text-red-800">
-              La busqueda fallo. Intenta de nuevo.
-            </p>
+            <p className="text-sm text-red-800">La busqueda fallo. Intenta de nuevo.</p>
           </CardContent>
         </Card>
       )}
 
       {/* Results Table */}
-      {job?.status === "done" && (
+      {prospects.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="text-lg">
-              Resultados ({prospects.length} prospectos)
-            </CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-lg flex items-center gap-2">
+                Ilustradoras encontradas
+                <Badge variant="secondary">{prospects.length}</Badge>
+                {isSearchRunning && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+              </CardTitle>
+              {jobDone && enrichStatus !== "running" && (
+                <div className="flex items-center gap-3">
+                  {selectedIds.size > 0 && (
+                    <span className="text-sm text-muted-foreground">
+                      {selectedIds.size} seleccionada{selectedIds.size > 1 ? "s" : ""}
+                    </span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={selectedIds.size === 0}
+                    onClick={handleEnrich}
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Enriquecer seleccionadas
+                  </Button>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
-            {prospects.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                No se encontraron prospectos.
-              </p>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Nombre</TableHead>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Industria</TableHead>
-                    <TableHead>Region</TableHead>
-                    <TableHead>Fit Score</TableHead>
-                    <TableHead>Fuente</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {prospects.map((prospect) => (
-                    <TableRow key={prospect.id}>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {jobDone && enrichStatus !== "running" && (
+                    <TableHead className="w-10">
+                      <Checkbox
+                        checked={prospects.length > 0 && selectedIds.size === prospects.length}
+                        onCheckedChange={toggleAll}
+                      />
+                    </TableHead>
+                  )}
+                  <TableHead>Nombre</TableHead>
+                  <TableHead>Ubicación</TableHead>
+                  <TableHead>Contacto</TableHead>
+                  <TableHead>Señales</TableHead>
+                  <TableHead>Score</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {prospects.map((p) => {
+                  const url = extractUrl(p.notes);
+                  const contactLines = extractContactLines(p.notes);
+                  const showCheckbox = jobDone && enrichStatus !== "running";
+                  return (
+                    <TableRow key={p.id} className={selectedIds.has(p.id) ? "bg-muted/40" : ""}>
+                      {showCheckbox && (
+                        <TableCell>
+                          <Checkbox
+                            checked={selectedIds.has(p.id)}
+                            onCheckedChange={() => toggleSelect(p.id)}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="font-medium">
-                        {prospect.name}
+                        {url ? (
+                          <a href={url} target="_blank" rel="noopener noreferrer" className="hover:underline text-blue-600">
+                            {p.name}
+                          </a>
+                        ) : p.name}
                       </TableCell>
-                      <TableCell className="capitalize">
-                        {prospect.type ?? "—"}
+                      <TableCell className="text-sm text-muted-foreground">
+                        {p.region ?? "—"}
                       </TableCell>
-                      <TableCell>{prospect.industry ?? "—"}</TableCell>
-                      <TableCell>{prospect.region ?? "—"}</TableCell>
+                      <TableCell className="text-sm">
+                        {contactLines.length > 0 ? (
+                          <div className="space-y-0.5">
+                            {contactLines.slice(0, 4).map((line, i) => (
+                              <p key={i} className="text-xs text-muted-foreground">{line}</p>
+                            ))}
+                          </div>
+                        ) : p.email ? (
+                          <a href={`mailto:${p.email}`} className="hover:underline text-blue-600 text-xs">
+                            {p.email}
+                          </a>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[200px] truncate">
+                        {p.opportunitySignals ?? p.fitBreakdown ?? "—"}
+                      </TableCell>
                       <TableCell>
-                        <Badge
-                          variant="secondary"
-                          className={fitScoreColor(prospect.fitScore)}
-                        >
-                          {prospect.fitScore}
+                        <Badge variant="secondary" className={fitScoreColor(p.fitScore)}>
+                          {p.fitScore}
                         </Badge>
                       </TableCell>
-                      <TableCell>{prospect.source ?? "—"}</TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
+                  );
+                })}
+              </TableBody>
+            </Table>
           </CardContent>
         </Card>
       )}

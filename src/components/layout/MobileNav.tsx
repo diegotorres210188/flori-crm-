@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
@@ -9,11 +10,17 @@ import {
   Activity,
   Settings,
   Briefcase,
+  Search,
+  UserPlus,
+  SendHorizonal,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/prospecting", label: "Buscador", icon: Search },
+  { href: "/preleads", label: "Pre-leads", icon: UserPlus },
+  { href: "/contactar", label: "Contactar", icon: SendHorizonal },
   { href: "/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/contacts", label: "Contactos", icon: Users },
   { href: "/deals", label: "Deals", icon: Briefcase },
@@ -26,9 +33,15 @@ export function MobileNav() {
 
   return (
     <div className="flex flex-col h-full bg-[var(--sidebar)] text-[var(--sidebar-foreground)]">
-      <div className="flex h-16 items-center gap-2 px-6 border-b border-[var(--sidebar-border)]">
-        <Briefcase className="h-6 w-6 text-[var(--sidebar-primary)]" />
-        <span className="text-lg font-bold tracking-tight">Auto-CRM</span>
+      <div className="flex h-16 items-center px-6 border-b border-[var(--sidebar-border)]">
+        <Image
+          src="/logo-floripondio.png"
+          alt="Floripondio"
+          width={140}
+          height={40}
+          className="object-contain"
+          priority
+        />
       </div>
 
       <nav className="flex-1 px-3 py-4 space-y-1">

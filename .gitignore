@@ -33,6 +33,7 @@ yarn-error.log*
 # env files
 .env*
 !.env.example
+!scraper/.env.example
 
 # vercel
 .vercel
@@ -47,6 +48,7 @@ next-env.d.ts
 
 # database
 data/crm.db
+data/crm.db-shm
 data/crm.db-journal
 data/crm.db-wal
 

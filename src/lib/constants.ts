@@ -7,6 +7,7 @@ export const TEMPERATURE_CONFIG: Record<
   cold: { label: "Frio", color: "#64748b", bgColor: "#f1f5f9" },
   warm: { label: "Tibio", color: "#ea580c", bgColor: "#fff7ed" },
   hot: { label: "Caliente", color: "#dc2626", bgColor: "#fef2f2" },
+  contactado: { label: "Contactado", color: "#16a34a", bgColor: "#f0fdf4" },
 };
 
 export const SOURCE_LABELS: Record<LeadSource, string> = {

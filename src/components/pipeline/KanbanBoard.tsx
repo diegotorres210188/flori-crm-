@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -22,8 +22,11 @@ interface KanbanBoardProps {
 }
 
 export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
+  const [mounted, setMounted] = useState(false);
   const [columns, setColumns] = useState(initialColumns);
   const [activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => { setMounted(true); }, []);
   const columnsSnapshot = useRef<PipelineColumn[]>(initialColumns);
 
   const sensors = useSensors(
@@ -117,6 +120,20 @@ export function KanbanBoard({ initialColumns }: KanbanBoardProps) {
       }
     },
     [columns]
+  );
+
+  if (!mounted) return (
+    <div className="flex gap-4 overflow-x-auto pb-4">
+      {columns.map((column) => (
+        <div key={column.id} className="flex flex-col w-72 shrink-0">
+          <div className="flex items-center gap-2 mb-3 px-1">
+            <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: column.color }} />
+            <span className="text-sm font-medium">{column.name}</span>
+            <span className="text-xs text-muted-foreground ml-auto">{column.deals.length}</span>
+          </div>
+        </div>
+      ))}
+    </div>
   );
 
   return (

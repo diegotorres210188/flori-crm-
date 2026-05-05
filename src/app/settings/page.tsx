@@ -4,6 +4,10 @@ import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import {
   Briefcase,
   Kanban,
@@ -12,6 +16,7 @@ import {
   Webhook,
   Bell,
   Copy,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import { NotificationToggle } from "@/components/shared/NotificationToggle";
@@ -22,6 +27,11 @@ export default function SettingsPage() {
   const [stages, setStages] = useState<
     Array<{ id: string; name: string; color: string; order: number }>
   >([]);
+  const [esSubject, setEsSubject] = useState("");
+  const [esBody, setEsBody] = useState("");
+  const [enSubject, setEnSubject] = useState("");
+  const [enBody, setEnBody] = useState("");
+  const [savingTemplate, setSavingTemplate] = useState(false);
 
   useEffect(() => {
     fetch("/crm-config.json")
@@ -32,7 +42,30 @@ export default function SettingsPage() {
     fetch("/api/pipeline")
       .then((r) => r.json())
       .then(setStages);
+
+    fetch("/api/settings/template")
+      .then((r) => r.json())
+      .then((t: { es: { subject: string; body: string }; en: { subject: string; body: string } }) => {
+        setEsSubject(t.es.subject);
+        setEsBody(t.es.body);
+        setEnSubject(t.en.subject);
+        setEnBody(t.en.body);
+      });
   }, []);
+
+  const saveTemplate = async () => {
+    setSavingTemplate(true);
+    try {
+      await fetch("/api/settings/template", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ es: { subject: esSubject, body: esBody }, en: { subject: enSubject, body: enBody } }),
+      });
+      toast.success("Plantillas guardadas");
+    } finally {
+      setSavingTemplate(false);
+    }
+  };
 
   const commands = [
     {
@@ -204,6 +237,51 @@ export default function SettingsPage() {
             <p className="text-xs text-muted-foreground">
               Las notificaciones te avisan cuando tienes seguimientos vencidos. Se verifican cada 5 minutos mientras el CRM esta abierto.
             </p>
+          </CardContent>
+        </Card>
+
+        {/* Email templates */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Mail className="h-4 w-4" />
+              Plantillas de mail de presentación
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <p className="text-sm text-muted-foreground">
+              Usá <code>{"{nombre}"}</code> para insertar el nombre del destinatario. En la sección <strong>Contactar</strong> podés elegir qué idioma usar por lead.
+            </p>
+
+            <div className="space-y-4">
+              <p className="text-sm font-medium">Español</p>
+              <div className="space-y-2">
+                <Label htmlFor="es-subject">Asunto</Label>
+                <Input id="es-subject" value={esSubject} onChange={e => setEsSubject(e.target.value)} placeholder="Asunto en español" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="es-body">Cuerpo</Label>
+                <Textarea id="es-body" value={esBody} onChange={e => setEsBody(e.target.value)} rows={8} className="font-mono text-sm" />
+              </div>
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <p className="text-sm font-medium">English</p>
+              <div className="space-y-2">
+                <Label htmlFor="en-subject">Subject</Label>
+                <Input id="en-subject" value={enSubject} onChange={e => setEnSubject(e.target.value)} placeholder="Subject in English" />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="en-body">Body</Label>
+                <Textarea id="en-body" value={enBody} onChange={e => setEnBody(e.target.value)} rows={8} className="font-mono text-sm" />
+              </div>
+            </div>
+
+            <Button onClick={saveTemplate} disabled={savingTemplate}>
+              {savingTemplate ? "Guardando..." : "Guardar plantillas"}
+            </Button>
           </CardContent>
         </Card>
 
