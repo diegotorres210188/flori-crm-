@@ -4,10 +4,24 @@ services:
     ports:
       - "3000:3000"
     volumes:
-      # Persist database outside container
       - ./data:/app/data
     environment:
       - NODE_ENV=production
-      # Optional: uncomment and set your API key for AI features
-      # - ANTHROPIC_API_KEY=sk-ant-...
+      - SCRAPER_SECRET=flori-secret-2024
+      - N8N_CALLBACK_SECRET=flori-secret-2024
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/followups"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  scraper:
+    build: ./scraper
+    depends_on:
+      crm:
+        condition: service_healthy
+    environment:
+      - CRM_URL=http://crm:3000
+      - CRM_SECRET=flori-secret-2024
     restart: unless-stopped
