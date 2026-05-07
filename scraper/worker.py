@@ -216,15 +216,18 @@ PEOPLE_EXCLUDE_DOMAINS = {
 }
 
 
-def build_queries(criteria: str, mode: str = "companies") -> list[str]:
+def build_queries(criteria: str, mode: str = "companies", role: str = "ilustrador") -> list[str]:
     base = criteria.strip()
     if mode == "people":
+        role_cfg = ROLE_SEARCH_TERMS.get(role, ROLE_SEARCH_TERMS["ilustrador"])
+        role_en = role_cfg["en"]
+        role_es = role_cfg["es"]
         return [
             f"{base} freelance portfolio",
             f"{base} freelance contacto",
             f"{base} behance portfolio",
-            f"{base} illustration portfolio",
-            f"{base} artista freelance",
+            f"{base} {role_en} portfolio",
+            f"{base} {role_es} freelance",
             f"{base} portfolio contacto",
         ]
     # companies mode
@@ -238,6 +241,99 @@ def build_queries(criteria: str, mode: str = "companies") -> list[str]:
         f"site:linkedin.com/company {base}",
         f"site:behance.net {base}",
     ]
+
+
+# ── Role → Behance search terms ───────────────────────────────────────────────
+
+ROLE_SEARCH_TERMS: dict[str, dict] = {
+    "ilustrador": {
+        "label": "ilustrador/a",
+        "en": "illustrator",
+        "es": "ilustrador",
+        "portfolio_terms": [
+            "illustration portfolio",
+            "ilustrador portafolio",
+            "freelance illustrator portfolio",
+            "ilustradora portfolio",
+        ],
+    },
+    "fotografo": {
+        "label": "fotógrafo/a",
+        "en": "photographer",
+        "es": "fotógrafo",
+        "portfolio_terms": [
+            "photographer portfolio",
+            "fotógrafo portafolio",
+            "photography freelance",
+            "fotografía portfolio",
+        ],
+    },
+    "disenador_grafico": {
+        "label": "diseñador/a gráfico/a",
+        "en": "graphic designer",
+        "es": "diseñador gráfico",
+        "portfolio_terms": [
+            "graphic designer portfolio",
+            "diseñador gráfico portafolio",
+            "graphic design freelance",
+            "diseño gráfico portafolio",
+        ],
+    },
+    "motion_designer": {
+        "label": "motion designer",
+        "en": "motion designer",
+        "es": "motion designer",
+        "portfolio_terms": [
+            "motion designer portfolio",
+            "motion design portfolio",
+            "animation portfolio",
+            "motion graphics freelance",
+        ],
+    },
+    "artista_3d": {
+        "label": "artista 3D",
+        "en": "3D artist",
+        "es": "artista 3D",
+        "portfolio_terms": [
+            "3D artist portfolio",
+            "artista 3D portafolio",
+            "3D design portfolio",
+            "3D modeling freelance",
+        ],
+    },
+    "muralista": {
+        "label": "muralista",
+        "en": "muralist",
+        "es": "muralista",
+        "portfolio_terms": [
+            "muralist portfolio",
+            "muralista portafolio",
+            "mural art portfolio",
+            "street art portfolio",
+        ],
+    },
+    "retratista": {
+        "label": "retratista",
+        "en": "portrait artist",
+        "es": "retratista",
+        "portfolio_terms": [
+            "portrait artist portfolio",
+            "retratista portafolio",
+            "portrait illustration portfolio",
+            "portrait photography portfolio",
+        ],
+    },
+}
+
+SPECIALTY_SEARCH_TERMS: dict[str, list[str]] = {
+    "moda":       ["fashion", "moda"],
+    "editorial":  ["editorial", "book"],
+    "infantil":   ["children", "kids", "infantil"],
+    "packaging":  ["packaging", "product"],
+    "publicidad": ["advertising", "branding"],
+    "musica":     ["music", "album"],
+    "naturaleza": ["botanical", "nature"],
+}
 
 
 # ── Behance filter → search term mapping ──────────────────────────────────────
@@ -341,19 +437,28 @@ INDUSTRY_JOB_FILTER: dict[str, list[str]] = {
 }
 
 
-def build_behance_project_terms(mode: str, industry: str, style: str, location: str, extra: str) -> list[str]:
+def build_behance_project_terms(mode: str, industry: str, style: str, location: str, extra: str, role: str = "ilustrador", specialty: str = "") -> list[str]:
     geo = LOCATION_GEO.get(location, "")
     terms = []
 
     if mode == "people":
-        base_terms = STYLE_BEHANCE.get(style, [])
-        if not base_terms and extra:
-            base_terms = [extra]
-        # Keywords go FIRST so they fill slots before generic style terms
-        if extra and style:
-            terms.append(f"{extra} illustration {geo}".strip() if geo else f"{extra} illustration")
-        for t in base_terms:
-            terms.append(f"{t} {geo}".strip() if geo else t)
+        role_cfg = ROLE_SEARCH_TERMS.get(role, ROLE_SEARCH_TERMS["ilustrador"])
+        role_en = role_cfg["en"]
+        base_terms = role_cfg["portfolio_terms"].copy()
+
+        if specialty and specialty in SPECIALTY_SEARCH_TERMS:
+            spec_kws = SPECIALTY_SEARCH_TERMS[specialty]
+            terms = [f"{spec_kws[0]} {role_en} portfolio", f"{spec_kws[0]} {role_en} freelance"]
+            if len(spec_kws) > 1:
+                terms.append(f"{spec_kws[1]} {role_en} portfolio")
+        else:
+            terms = base_terms
+
+        if extra:
+            terms.insert(0, f"{extra} {role_en}")
+
+        if geo:
+            terms = [f"{t} {geo}".strip() for t in terms]
     else:
         cfg = INDUSTRY_BEHANCE.get(industry, {})
         base_terms = cfg.get("project_terms", [])
@@ -873,7 +978,7 @@ _EXTRACT_JOBS_JS = """
 """
 
 
-async def _async_scrape_behance_people(search_terms: list, location_filter: str, max_profiles: int = 15, strict_geo: bool = False, keywords: str = "") -> list:
+async def _async_scrape_behance_people(search_terms: list, location_filter: str, max_profiles: int = 15, strict_geo: bool = False, keywords: str = "", role: str = "ilustrador") -> list:
     """Scrape Behance project search → owner profiles → email/contacts. Returns prospect list."""
     import asyncio
     from playwright.async_api import async_playwright
@@ -978,14 +1083,16 @@ async def _async_scrape_behance_people(search_terms: list, location_filter: str,
                 if bio:
                     notes_lines.append(f"💬 {bio[:600]}")
 
+                role_cfg = ROLE_SEARCH_TERMS.get(role, ROLE_SEARCH_TERMS["ilustrador"])
+                role_label = role_cfg["label"]
                 prospects.append({
                     "name": name,
-                    "type": "illustrator",
-                    "industry": "Ilustración",
+                    "type": role,
+                    "industry": role_label.capitalize(),
                     "region": location_raw or None,
                     "opportunitySignals": f"Behance · {proj.get('title', '')[:60]}",
                     "fitScore": score,
-                    "fitBreakdown": bio[:400] if bio else "ilustradora en Behance",
+                    "fitBreakdown": bio[:400] if bio else f"{role_label} en Behance",
                     "email": emails[0] if emails else None,
                     "phone": None,
                     "instagram": instagram,
@@ -1186,10 +1293,10 @@ async def _async_scrape_behance_projects_for_clients(search_terms: list, locatio
     return prospects
 
 
-def scrape_behance_people(search_terms: list, location_filter: str, strict_geo: bool = False, keywords: str = "") -> list:
+def scrape_behance_people(search_terms: list, location_filter: str, strict_geo: bool = False, keywords: str = "", role: str = "ilustrador") -> list:
     import asyncio
     try:
-        return asyncio.run(_async_scrape_behance_people(search_terms, location_filter, strict_geo=strict_geo, keywords=keywords))
+        return asyncio.run(_async_scrape_behance_people(search_terms, location_filter, strict_geo=strict_geo, keywords=keywords, role=role))
     except Exception as e:
         log.error(f"Behance people scraper error: {e}")
         return []
@@ -1217,13 +1324,13 @@ def scrape_behance_clients(search_terms: list, location_filter: str) -> list:
 
 def find_prospects(criteria: str, job_id: str = None, mode: str = "companies",
                    industry: str = "", style: str = "", location: str = "argentina",
-                   strict_geo: bool = False) -> list:
+                   strict_geo: bool = False, role: str = "ilustrador", specialty: str = "") -> list:
 
     # ── People mode: Behance primary ─────────────────────────────────────────
     if mode == "people":
-        search_terms = build_behance_project_terms("people", industry, style, location, criteria)
+        search_terms = build_behance_project_terms("people", industry, style, location, criteria, role=role, specialty=specialty)
         log.info(f"  Behance people terms: {search_terms}")
-        behance_prospects = scrape_behance_people(search_terms, location, strict_geo=strict_geo, keywords=criteria)
+        behance_prospects = scrape_behance_people(search_terms, location, strict_geo=strict_geo, keywords=criteria, role=role)
         if job_id and behance_prospects:
             send_partial_prospects(job_id, [{k: v for k, v in p.items() if k != "_raw_url"}
                                             for p in behance_prospects])
@@ -1267,7 +1374,7 @@ def find_prospects(criteria: str, job_id: str = None, mode: str = "companies",
         send_partial_prospects(job_id, [{k: v for k, v in p.items() if k != "_raw_url"} for p in client_prospects])
 
     # Track 3: DDG fallback for extra coverage
-    queries = build_queries(criteria or (INDUSTRY_BEHANCE.get(industry, {}).get("project_terms", [""])[0]), mode)
+    queries = build_queries(criteria or (INDUSTRY_BEHANCE.get(industry, {}).get("project_terms", [""])[0]), mode, role=role)
     log.info(f"  Queries: {len(queries)} (modo: {mode})")
 
     seen_urls: set = set()
@@ -1382,6 +1489,8 @@ def process_job(job: dict):
     search_style = ""
     search_location = "argentina"
     search_strict_geo = False
+    search_role = "ilustrador"
+    search_specialty = ""
     try:
         parsed = json.loads(criteria)
         if isinstance(parsed, dict):
@@ -1397,6 +1506,8 @@ def process_job(job: dict):
             search_style = parsed.get("style", "")
             search_location = parsed.get("location", "argentina")
             search_strict_geo = bool(parsed.get("strict_geo", False))
+            search_role = parsed.get("role", "ilustrador")
+            search_specialty = parsed.get("specialty", "")
     except (json.JSONDecodeError, TypeError, KeyError):
         pass
 
@@ -1409,7 +1520,7 @@ def process_job(job: dict):
         prospects = find_prospects(
             search_query, job_id=job_id, mode=search_mode,
             industry=search_industry, style=search_style, location=search_location,
-            strict_geo=search_strict_geo,
+            strict_geo=search_strict_geo, role=search_role, specialty=search_specialty,
         )
     except Exception as e:
         log.error(f"Error en búsqueda: {e}")

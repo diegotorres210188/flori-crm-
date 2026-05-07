@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { jobs } from "@/db/schema";
 
 export async function POST(request: NextRequest) {
-  let body: { criteria?: string; mode?: string; industry?: string; style?: string; location?: string; strict_geo?: boolean };
+  let body: { criteria?: string; mode?: string; role?: string; specialty?: string; industry?: string; style?: string; location?: string; strict_geo?: boolean };
   try {
     body = await request.json();
   } catch {
@@ -11,20 +11,29 @@ export async function POST(request: NextRequest) {
   }
 
   const mode = body.mode === "people" ? "people" : "companies";
+  const role = body.role?.trim() || "";
+  const specialty = body.specialty?.trim() || "";
+  // legacy fields kept for companies mode
   const industry = body.industry?.trim() || "";
   const style = body.style?.trim() || "";
   const location = body.location?.trim() || "";
   const extra = body.criteria?.trim() || "";
   const strictGeo = !!body.strict_geo;
 
-  if (!industry && !style) {
+  if (mode === "people" && !role) {
+    return NextResponse.json(
+      { error: "Selecciona un tipo de profesional" },
+      { status: 400 }
+    );
+  }
+  if (mode === "companies" && !industry && !style) {
     return NextResponse.json(
       { error: "Selecciona al menos un filtro de búsqueda" },
       { status: 400 }
     );
   }
 
-  const criteriaJson = JSON.stringify({ mode, query: extra, industry, style, location, strict_geo: strictGeo });
+  const criteriaJson = JSON.stringify({ mode, query: extra, role, specialty, industry, style, location, strict_geo: strictGeo });
 
   try {
     const now = new Date();

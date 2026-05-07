@@ -26,13 +26,25 @@ import { Search, Loader2, CheckCircle2, Sparkles } from "lucide-react";
 
 // ── Filter options ───────────────────────────────────────────────
 
-const STYLE_OPTIONS = [
-  { value: "botanica", label: "Botánica / Naturaleza" },
-  { value: "whimsical", label: "Whimsical / Mágica" },
-  { value: "editorial", label: "Editorial / Prensa" },
-  { value: "infantil", label: "Ilustración infantil / Cuento" },
-  { value: "pattern", label: "Pattern design / Surface design" },
-  { value: "acuarela", label: "Acuarela / Handmade" },
+const ROLE_OPTIONS = [
+  { value: "ilustrador", label: "Ilustrador/a" },
+  { value: "fotografo", label: "Fotógrafo/a" },
+  { value: "disenador_grafico", label: "Diseñador/a gráfico/a" },
+  { value: "motion_designer", label: "Motion designer / Animador/a" },
+  { value: "artista_3d", label: "Artista 3D" },
+  { value: "muralista", label: "Muralista / Arte urbano" },
+  { value: "retratista", label: "Retratista" },
+];
+
+const SPECIALTY_OPTIONS = [
+  { value: "", label: "Sin filtro de especialidad" },
+  { value: "moda", label: "Moda / Textil" },
+  { value: "editorial", label: "Editorial / Libros" },
+  { value: "infantil", label: "Infantil / Niños" },
+  { value: "packaging", label: "Packaging / Producto" },
+  { value: "publicidad", label: "Publicidad / Branding" },
+  { value: "musica", label: "Música / Entretenimiento" },
+  { value: "naturaleza", label: "Naturaleza / Botánica" },
 ];
 
 const LOCATION_OPTIONS = [
@@ -103,7 +115,8 @@ export default function ProspectingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [style, setStyle] = useState("");
+  const [role, setRole] = useState("");
+  const [specialty, setSpecialty] = useState("");
   const [location, setLocation] = useState("argentina");
   const [strictGeo, setStrictGeo] = useState(false);
   const [keywords, setKeywords] = useState("");
@@ -204,9 +217,11 @@ export default function ProspectingPage() {
     return () => clearInterval(interval);
   }, [enrichJobId, enrichStatus, jobId]);
 
+  const roleLabel = ROLE_OPTIONS.find((o) => o.value === role)?.label ?? "profesionales";
+
   const handleSearch = async () => {
-    if (!style) {
-      setError("Seleccioná un estilo de ilustración.");
+    if (!role) {
+      setError("Seleccioná un tipo de profesional.");
       return;
     }
 
@@ -225,7 +240,8 @@ export default function ProspectingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode: "people",
-          style,
+          role,
+          specialty,
           location,
           strict_geo: strictGeo,
           criteria: keywords.trim(),
@@ -313,9 +329,9 @@ export default function ProspectingPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Buscador de Ilustradoras</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Buscador de Profesionales en Behance</h1>
         <p className="text-muted-foreground">
-          Busca ilustradoras y artistas en Behance por estilo y ubicación
+          Busca fotógrafos, ilustradores, diseñadores y otros creativos por especialidad y ubicación
         </p>
       </div>
 
@@ -327,15 +343,29 @@ export default function ProspectingPage() {
         <CardContent className="space-y-5">
 
           {/* Filters grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
-              <Label>Estilo de ilustración</Label>
-              <Select value={style} onValueChange={(v) => setStyle(v ?? "")} disabled={!!isSearchRunning}>
+              <Label>Profesión / Puesto</Label>
+              <Select value={role} onValueChange={(v) => setRole(v ?? "")} disabled={!!isSearchRunning}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccioná un estilo…" />
+                  <SelectValue placeholder="¿Qué profesional buscás?" />
                 </SelectTrigger>
                 <SelectContent>
-                  {STYLE_OPTIONS.map((o) => (
+                  {ROLE_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Especialidad / Industria</Label>
+              <Select value={specialty} onValueChange={(v) => setSpecialty(v ?? "")} disabled={!!isSearchRunning}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Especialidad (opcional)" />
+                </SelectTrigger>
+                <SelectContent>
+                  {SPECIALTY_OPTIONS.map((o) => (
                     <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
                   ))}
                 </SelectContent>
@@ -412,7 +442,7 @@ export default function ProspectingPage() {
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {prospects.length > 0
-                    ? `${prospects.length} ilustradoras encontradas hasta ahora`
+                    ? `${prospects.length} ${roleLabel.toLowerCase()} encontrados hasta ahora`
                     : "Tarda 1-3 minutos. Los resultados aparecen a medida que se encuentran."}
                 </p>
               </div>
@@ -452,7 +482,7 @@ export default function ProspectingPage() {
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-600" />
               <p className="text-sm font-medium text-green-800">
-                Busqueda completada — {prospects.length} ilustradoras encontradas
+                Busqueda completada — {prospects.length} {roleLabel.toLowerCase()} encontrados
               </p>
             </div>
           </CardContent>
@@ -473,7 +503,7 @@ export default function ProspectingPage() {
           <CardHeader>
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
-                Ilustradoras encontradas
+                Profesionales encontrados
                 <Badge variant="secondary">{prospects.length}</Badge>
                 {isSearchRunning && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
               </CardTitle>
