@@ -80,14 +80,15 @@ export function MultiSelect({
               >
                 {o.label}
                 {!disabled && (
-                  <button
-                    type="button"
+                  <span
+                    role="button"
+                    tabIndex={-1}
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={(e) => remove(o.value, e)}
-                    className="rounded-full hover:bg-muted-foreground/20"
+                    className="rounded-full hover:bg-muted-foreground/20 cursor-pointer"
                   >
                     <X className="h-3 w-3" />
-                  </button>
+                  </span>
                 )}
               </Badge>
             ))
