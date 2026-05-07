@@ -1487,10 +1487,10 @@ def process_job(job: dict):
     search_mode = "companies"
     search_industry = ""
     search_style = ""
-    search_location = "argentina"
     search_strict_geo = False
-    search_role = "ilustrador"
-    search_specialty = ""
+    search_roles = ["ilustrador"]
+    search_locations = ["argentina"]
+    search_specialties = [""]
     try:
         parsed = json.loads(criteria)
         if isinstance(parsed, dict):
@@ -1504,10 +1504,27 @@ def process_job(job: dict):
             search_mode = parsed.get("mode", "companies")
             search_industry = parsed.get("industry", "")
             search_style = parsed.get("style", "")
-            search_location = parsed.get("location", "argentina")
             search_strict_geo = bool(parsed.get("strict_geo", False))
-            search_role = parsed.get("role", "ilustrador")
-            search_specialty = parsed.get("specialty", "")
+
+            # Multi-value fields (new) with single-value legacy fallback
+            raw_roles = parsed.get("roles")
+            if raw_roles and isinstance(raw_roles, list) and raw_roles:
+                search_roles = raw_roles
+            else:
+                search_roles = [parsed.get("role", "ilustrador")]
+
+            raw_locations = parsed.get("locations")
+            if raw_locations and isinstance(raw_locations, list) and raw_locations:
+                search_locations = raw_locations
+            else:
+                search_locations = [parsed.get("location", "argentina")]
+
+            raw_specialties = parsed.get("specialties")
+            if raw_specialties and isinstance(raw_specialties, list) and raw_specialties:
+                search_specialties = raw_specialties
+            else:
+                search_specialties = [parsed.get("specialty", "")]
+
     except (json.JSONDecodeError, TypeError, KeyError):
         pass
 
@@ -1517,11 +1534,22 @@ def process_job(job: dict):
     }
 
     try:
-        prospects = find_prospects(
-            search_query, job_id=job_id, mode=search_mode,
-            industry=search_industry, style=search_style, location=search_location,
-            strict_geo=search_strict_geo, role=search_role, specialty=search_specialty,
-        )
+        all_prospects = []
+        seen_names: set = set()
+        # Run a search for each role × primary location combination
+        primary_location = search_locations[0] if search_locations else "argentina"
+        primary_specialty = search_specialties[0] if search_specialties else ""
+        for search_role in search_roles:
+            role_prospects = find_prospects(
+                search_query, job_id=job_id, mode=search_mode,
+                industry=search_industry, style=search_style, location=primary_location,
+                strict_geo=search_strict_geo, role=search_role, specialty=primary_specialty,
+            )
+            for p in role_prospects:
+                if p.get("name", "").lower() not in seen_names:
+                    seen_names.add(p.get("name", "").lower())
+                    all_prospects.append(p)
+        prospects = all_prospects
     except Exception as e:
         log.error(f"Error en búsqueda: {e}")
         prospects = []

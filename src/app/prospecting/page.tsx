@@ -13,31 +13,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { MultiSelect, type MultiSelectOption } from "@/components/ui/multi-select";
 import { Search, Loader2, CheckCircle2, Sparkles } from "lucide-react";
 
-// ── Filter options ───────────────────────────────────────────────
+// ── Static filter options ────────────────────────────────────────
 
-const ROLE_OPTIONS = [
-  { value: "ilustrador", label: "Ilustrador/a" },
-  { value: "fotografo", label: "Fotógrafo/a" },
-  { value: "disenador_grafico", label: "Diseñador/a gráfico/a" },
-  { value: "motion_designer", label: "Motion designer / Animador/a" },
-  { value: "artista_3d", label: "Artista 3D" },
-  { value: "muralista", label: "Muralista / Arte urbano" },
-  { value: "retratista", label: "Retratista" },
-];
-
-const SPECIALTY_OPTIONS = [
-  { value: "", label: "Sin filtro de especialidad" },
+const SPECIALTY_OPTIONS: MultiSelectOption[] = [
   { value: "moda", label: "Moda / Textil" },
   { value: "editorial", label: "Editorial / Libros" },
   { value: "infantil", label: "Infantil / Niños" },
@@ -47,7 +30,7 @@ const SPECIALTY_OPTIONS = [
   { value: "naturaleza", label: "Naturaleza / Botánica" },
 ];
 
-const LOCATION_OPTIONS = [
+const LOCATION_OPTIONS: MultiSelectOption[] = [
   { value: "argentina", label: "Argentina" },
   { value: "buenos_aires", label: "Buenos Aires" },
   { value: "latam", label: "Latinoamérica" },
@@ -115,15 +98,27 @@ export default function ProspectingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [role, setRole] = useState("");
-  const [specialty, setSpecialty] = useState("");
-  const [location, setLocation] = useState("argentina");
+  // Dynamic profession options loaded from settings
+  const [roleOptions, setRoleOptions] = useState<MultiSelectOption[]>([]);
+
+  // Multi-select filter state
+  const [roles, setRoles] = useState<string[]>([]);
+  const [specialties, setSpecialties] = useState<string[]>([]);
+  const [locations, setLocations] = useState<string[]>(["argentina"]);
   const [strictGeo, setStrictGeo] = useState(false);
   const [keywords, setKeywords] = useState("");
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [enrichJobId, setEnrichJobId] = useState<string | null>(null);
   const [enrichStatus, setEnrichStatus] = useState<string>("idle");
+
+  // Load profession options from settings
+  useEffect(() => {
+    fetch("/api/settings/professions")
+      .then((r) => r.json())
+      .then(setRoleOptions)
+      .catch(() => {});
+  }, []);
 
   // Restore active job from session on mount
   useEffect(() => {
@@ -217,11 +212,17 @@ export default function ProspectingPage() {
     return () => clearInterval(interval);
   }, [enrichJobId, enrichStatus, jobId]);
 
-  const roleLabel = ROLE_OPTIONS.find((o) => o.value === role)?.label ?? "profesionales";
+  const rolesLabel = roles.length > 0
+    ? roleOptions.filter((o) => roles.includes(o.value)).map((o) => o.label).join(", ")
+    : "profesionales";
 
   const handleSearch = async () => {
-    if (!role) {
-      setError("Seleccioná un tipo de profesional.");
+    if (roles.length === 0) {
+      setError("Seleccioná al menos un tipo de profesional.");
+      return;
+    }
+    if (locations.length === 0) {
+      setError("Seleccioná al menos una ubicación.");
       return;
     }
 
@@ -240,9 +241,9 @@ export default function ProspectingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode: "people",
-          role,
-          specialty,
-          location,
+          roles,
+          specialties,
+          locations,
           strict_geo: strictGeo,
           criteria: keywords.trim(),
         }),
@@ -324,6 +325,8 @@ export default function ProspectingPage() {
     );
   };
 
+  const hasGlobalLocation = locations.includes("global");
+
   // ── Render ──────────────────────────────────────────────────────
 
   return (
@@ -346,44 +349,35 @@ export default function ProspectingPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label>Profesión / Puesto</Label>
-              <Select value={role} onValueChange={(v) => setRole(v ?? "")} disabled={!!isSearchRunning}>
-                <SelectTrigger>
-                  <SelectValue placeholder="¿Qué profesional buscás?" />
-                </SelectTrigger>
-                <SelectContent>
-                  {ROLE_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={roleOptions}
+                value={roles}
+                onChange={setRoles}
+                placeholder="¿Qué profesional buscás?"
+                disabled={!!isSearchRunning}
+              />
             </div>
 
             <div className="space-y-1.5">
               <Label>Especialidad / Industria</Label>
-              <Select value={specialty} onValueChange={(v) => setSpecialty(v ?? "")} disabled={!!isSearchRunning}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Especialidad (opcional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  {SPECIALTY_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={SPECIALTY_OPTIONS}
+                value={specialties}
+                onChange={setSpecialties}
+                placeholder="Especialidad (opcional)"
+                disabled={!!isSearchRunning}
+              />
             </div>
 
             <div className="space-y-1.5">
               <Label>Ubicación</Label>
-              <Select value={location} onValueChange={(v) => setLocation(v ?? "argentina")} disabled={!!isSearchRunning}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Ubicación…" />
-                </SelectTrigger>
-                <SelectContent>
-                  {LOCATION_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <MultiSelect
+                options={LOCATION_OPTIONS}
+                value={locations}
+                onChange={setLocations}
+                placeholder="Seleccioná ubicación…"
+                disabled={!!isSearchRunning}
+              />
             </div>
           </div>
 
@@ -402,7 +396,7 @@ export default function ProspectingPage() {
               <p className="text-xs text-muted-foreground">Refinan la búsqueda en Behance y priorizan perfiles que las mencionen</p>
             </div>
 
-            {location !== "global" && (
+            {!hasGlobalLocation && locations.length > 0 && (
               <label className="flex items-center gap-2 cursor-pointer select-none">
                 <Checkbox
                   checked={strictGeo}
@@ -442,7 +436,7 @@ export default function ProspectingPage() {
                 </p>
                 <p className="text-sm text-muted-foreground">
                   {prospects.length > 0
-                    ? `${prospects.length} ${roleLabel.toLowerCase()} encontrados hasta ahora`
+                    ? `${prospects.length} ${rolesLabel.toLowerCase()} encontrados hasta ahora`
                     : "Tarda 1-3 minutos. Los resultados aparecen a medida que se encuentran."}
                 </p>
               </div>
@@ -482,7 +476,7 @@ export default function ProspectingPage() {
             <div className="flex items-center gap-2">
               <CheckCircle2 className="h-5 w-5 text-green-600" />
               <p className="text-sm font-medium text-green-800">
-                Busqueda completada — {prospects.length} {roleLabel.toLowerCase()} encontrados
+                Busqueda completada — {prospects.length} {rolesLabel.toLowerCase()} encontrados
               </p>
             </div>
           </CardContent>

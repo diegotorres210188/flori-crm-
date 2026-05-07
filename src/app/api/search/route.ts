@@ -3,7 +3,21 @@ import { db } from "@/db";
 import { jobs } from "@/db/schema";
 
 export async function POST(request: NextRequest) {
-  let body: { criteria?: string; mode?: string; role?: string; specialty?: string; industry?: string; style?: string; location?: string; strict_geo?: boolean };
+  let body: {
+    criteria?: string;
+    mode?: string;
+    // Multi-select arrays (new)
+    roles?: string[];
+    specialties?: string[];
+    locations?: string[];
+    // Single-value legacy fields
+    role?: string;
+    specialty?: string;
+    location?: string;
+    industry?: string;
+    style?: string;
+    strict_geo?: boolean;
+  };
   try {
     body = await request.json();
   } catch {
@@ -11,16 +25,19 @@ export async function POST(request: NextRequest) {
   }
 
   const mode = body.mode === "people" ? "people" : "companies";
-  const role = body.role?.trim() || "";
-  const specialty = body.specialty?.trim() || "";
-  // legacy fields kept for companies mode
+
+  // Normalize: prefer array fields, fall back to single-value legacy fields
+  const roles = (body.roles?.length ? body.roles : body.role ? [body.role] : []).map((r) => r.trim()).filter(Boolean);
+  const specialties = (body.specialties?.length ? body.specialties : body.specialty ? [body.specialty] : []).map((s) => s.trim()).filter(Boolean);
+  const locations = (body.locations?.length ? body.locations : body.location ? [body.location] : ["argentina"]).map((l) => l.trim()).filter(Boolean);
+
+  // Legacy single-value fields kept for companies mode
   const industry = body.industry?.trim() || "";
   const style = body.style?.trim() || "";
-  const location = body.location?.trim() || "";
   const extra = body.criteria?.trim() || "";
   const strictGeo = !!body.strict_geo;
 
-  if (mode === "people" && !role) {
+  if (mode === "people" && roles.length === 0) {
     return NextResponse.json(
       { error: "Selecciona un tipo de profesional" },
       { status: 400 }
@@ -33,7 +50,20 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const criteriaJson = JSON.stringify({ mode, query: extra, role, specialty, industry, style, location, strict_geo: strictGeo });
+  const criteriaJson = JSON.stringify({
+    mode,
+    query: extra,
+    roles,
+    specialties,
+    locations,
+    // Keep legacy single fields for backward compat with old worker versions
+    role: roles[0] ?? "",
+    specialty: specialties[0] ?? "",
+    location: locations[0] ?? "argentina",
+    industry,
+    style,
+    strict_geo: strictGeo,
+  });
 
   try {
     const now = new Date();

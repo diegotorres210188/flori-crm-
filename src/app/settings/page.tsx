@@ -17,10 +17,18 @@ import {
   Bell,
   Copy,
   Mail,
+  Search,
+  Plus,
+  Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { NotificationToggle } from "@/components/shared/NotificationToggle";
 import type { CrmConfig } from "@/types";
+
+interface ProfessionOption {
+  value: string;
+  label: string;
+}
 
 export default function SettingsPage() {
   const [config, setConfig] = useState<CrmConfig | null>(null);
@@ -32,6 +40,11 @@ export default function SettingsPage() {
   const [enSubject, setEnSubject] = useState("");
   const [enBody, setEnBody] = useState("");
   const [savingTemplate, setSavingTemplate] = useState(false);
+
+  const [professions, setProfessions] = useState<ProfessionOption[]>([]);
+  const [savingProfessions, setSavingProfessions] = useState(false);
+  const [newProfLabel, setNewProfLabel] = useState("");
+  const [newProfValue, setNewProfValue] = useState("");
 
   useEffect(() => {
     fetch("/crm-config.json")
@@ -51,7 +64,48 @@ export default function SettingsPage() {
         setEnSubject(t.en.subject);
         setEnBody(t.en.body);
       });
+
+    fetch("/api/settings/professions")
+      .then((r) => r.json())
+      .then(setProfessions)
+      .catch(() => {});
   }, []);
+
+  const slugify = (text: string) =>
+    text.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+
+  const addProfession = () => {
+    const label = newProfLabel.trim();
+    if (!label) return;
+    const value = newProfValue.trim() || slugify(label);
+    if (professions.some((p) => p.value === value)) {
+      toast.error("Ya existe una profesión con ese identificador");
+      return;
+    }
+    setProfessions((prev) => [...prev, { value, label }]);
+    setNewProfLabel("");
+    setNewProfValue("");
+  };
+
+  const removeProfession = (value: string) => {
+    setProfessions((prev) => prev.filter((p) => p.value !== value));
+  };
+
+  const saveProfessions = async () => {
+    setSavingProfessions(true);
+    try {
+      await fetch("/api/settings/professions", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(professions),
+      });
+      toast.success("Profesiones guardadas");
+    } catch {
+      toast.error("Error al guardar");
+    } finally {
+      setSavingProfessions(false);
+    }
+  };
 
   const saveTemplate = async () => {
     setSavingTemplate(true);
@@ -281,6 +335,80 @@ export default function SettingsPage() {
 
             <Button onClick={saveTemplate} disabled={savingTemplate}>
               {savingTemplate ? "Guardando..." : "Guardar plantillas"}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Prospecting professions */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Search className="h-4 w-4" />
+              Profesiones del Buscador
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Estas son las profesiones disponibles en el buscador de Behance. Podés agregar, editar o eliminar opciones.
+            </p>
+
+            {/* Current list */}
+            <div className="space-y-2">
+              {professions.map((p) => (
+                <div key={p.value} className="flex items-center gap-3 p-2 rounded-lg bg-muted/50">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{p.label}</p>
+                    <p className="text-xs text-muted-foreground font-mono">{p.value}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeProfession(p.value)}
+                    className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive"
+                    title="Eliminar"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <Separator />
+
+            {/* Add new */}
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Agregar profesión</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="prof-label">Nombre visible</Label>
+                  <Input
+                    id="prof-label"
+                    placeholder="Ej: Ceramista / Alfarero/a"
+                    value={newProfLabel}
+                    onChange={(e) => setNewProfLabel(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addProfession()}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="prof-value">
+                    Identificador <span className="text-muted-foreground font-normal text-xs">(opcional, se genera automático)</span>
+                  </Label>
+                  <Input
+                    id="prof-value"
+                    placeholder="Ej: ceramista"
+                    value={newProfValue}
+                    onChange={(e) => setNewProfValue(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addProfession()}
+                  />
+                </div>
+              </div>
+              <Button type="button" variant="outline" size="sm" onClick={addProfession}>
+                <Plus className="mr-2 h-4 w-4" />
+                Agregar
+              </Button>
+            </div>
+
+            <Button onClick={saveProfessions} disabled={savingProfessions}>
+              {savingProfessions ? "Guardando..." : "Guardar profesiones"}
             </Button>
           </CardContent>
         </Card>
