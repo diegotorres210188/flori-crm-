@@ -887,9 +887,43 @@ PLAYWRIGHT_UA = (
 _EXTRACT_PROJECTS_JS = """
 () => {
     const results = [];
-    const rootCards = document.querySelectorAll('[class*="ProjectCover-root"]');
     const seen = new Set();
-    rootCards.forEach((card) => {
+
+    // Try multiple selector strategies — Behance updates their class names periodically
+    const CARD_SELECTORS = [
+        '[class*="ProjectCover-root"]',
+        '[class*="projectCover"]',
+        '[class*="ProjectCard"]',
+        '[class*="project-card"]',
+        'div[data-testid*="project"]',
+        'article',
+    ];
+
+    let cards = [];
+    for (const sel of CARD_SELECTORS) {
+        const found = Array.from(document.querySelectorAll(sel));
+        if (found.length > 2) { cards = found; break; }
+    }
+
+    // Fallback: collect all gallery links directly
+    if (cards.length === 0) {
+        const galleryLinks = Array.from(document.querySelectorAll('a[href*="/gallery/"]'));
+        galleryLinks.forEach(link => {
+            const projectUrl = link.href.split('?')[0];
+            if (seen.has(projectUrl)) return;
+            seen.add(projectUrl);
+            // Try to find owner link nearby
+            const container = link.closest('div') || link.parentElement;
+            const ownerLink = container ? container.querySelector('a[href]:not([href*="/gallery/"])') : null;
+            const ownerHref = ownerLink ? ownerLink.href : null;
+            const ownerUrl = (ownerHref && ownerHref.match(/behance\\.net\\/[a-zA-Z0-9_-]+$/))
+                ? ownerHref.split('?')[0] : null;
+            results.push({ title: link.getAttribute('aria-label') || link.textContent.trim() || null, projectUrl, ownerUrl, ownerName: ownerLink ? ownerLink.textContent.trim() : null });
+        });
+        return results;
+    }
+
+    cards.forEach((card) => {
         const innerCard = card.querySelector('[aria-label]');
         const title = innerCard ? innerCard.getAttribute('aria-label') : null;
         const links = Array.from(card.querySelectorAll('a[href]'));
@@ -997,10 +1031,17 @@ async def _async_scrape_behance_people(search_terms: list, location_filter: str,
             url = f"https://www.behance.net/search/projects?search={requests.utils.quote(term)}&sort=appreciations&time=month"
             log.info(f"  Behance search: {term[:60]}")
             try:
-                await page.goto(url, wait_until="networkidle", timeout=45000)
-                await asyncio.sleep(3)
+                await page.goto(url, wait_until="domcontentloaded", timeout=45000)
+                await asyncio.sleep(5)
+                page_title = await page.title()
+                page_url = page.url
+                log.info(f"    Página: {page_title[:60]} | URL: {page_url[:80]}")
                 projects = await page.evaluate(_EXTRACT_PROJECTS_JS)
-                log.info(f"    → {len(projects)} proyectos")
+                log.info(f"    → {len(projects)} proyectos encontrados")
+                if len(projects) == 0:
+                    # Log page text snippet to diagnose blocks/captchas
+                    snippet = await page.evaluate("() => document.body.innerText.slice(0, 300)")
+                    log.warning(f"    Sin proyectos. Contenido de página: {snippet[:200]!r}")
             except Exception as e:
                 log.warning(f"  Behance search error: {e}")
                 continue
